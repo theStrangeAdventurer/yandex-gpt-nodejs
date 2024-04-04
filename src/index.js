@@ -1,85 +1,119 @@
 import dotenv from 'dotenv';
 import { iamRepository } from './utils/index.js';
+import { getTextCompletion } from './utils/yandex.js';
+import { getReplyId, cleanSpecialSymbols, getUsername } from './utils/telegram.js';
+import { Telegraf } from 'telegraf';
 
 dotenv.config({});
 
 /**
- * Models: https://yandex.cloud/ru/docs/yandexgpt/concepts/models#yandexgpt-generation
- * 
- * Roles:
-    system - special role used to define the behaviour of the completion model
-    assistant - a role used by the model to generate responses
-    user - a role used by the user to describe requests to the model
-
- * @param {{ model: 'yandexgpt-lite/latest' | 'yandexgpt/latest', iamToken: string; folderId: string; role: string; messages: Array<{ role: 'user' | 'assistant', text: string }> }} options 
- * @returns {Promise<{ result: { alternatives: Array<{ message: { role: string; text: string; }, status: string }> } }>}
+ * @type{Record<number, { isWaitingFor?: 'role'; role: string; messages: Array<{ role: 'user' | 'assistant'; text: string; }> }>}
  */
-const getTextCompletion = async (options = {}) => {
-    const response = await fetch('https://llm.api.cloud.yandex.net/foundationModels/v1/completion', {
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${options.iamToken}`,
-            'x-folder-id': options.folderId,
-        },
-        method: 'POST',
-        body: JSON.stringify({
-            "modelUri": `gpt://${options.folderId}/${options.model}`,
-            "completionOptions": {
-                "stream": false,
-                "temperature": 0.2,
-                "maxTokens": "8000" // Max value https://yandex.cloud/ru/docs/yandexgpt/concepts/#working-mode
-            },
-            "messages": [
-                {
-                    "role": "system",
-                    "text": options.role,
-                },
-                ...options.messages
-            ]
-        }),
-    });
-    const result = await response.json();
+const contextStore = {};
 
-    console.log()
+const getDefaultState = () => ({
+    isWaitingFor: null,
+    role: null,
+    messages: [],
+});
 
-    return result;
-}
+/**
+ * @param {import('telegraf').Context} ctx 
+ * @param {(ctx: import('telegraf').Context, replyId: number) => void} next 
+ */
+const middleware = async (ctx, next) => {
+    const replyId = getReplyId(ctx);
+    const username = getUsername(ctx);
+    const usersWhiteList = (process.env.USERS_WHITE_LIST || '').split(',').map(username => username.trim());
+    if (!usersWhiteList.includes(username)) {
+        return ctx.reply('Извини, я тебя не знаю, Бро');
+    }
+    
+    contextStore[replyId] = contextStore[replyId] || getDefaultState();
+    next(ctx, replyId);
+};
 
+const bot = new Telegraf(process.env.BOT_TOKEN);
 
 async function main() {
     await iamRepository.init(process.env.YA_OAUTH_TOKEN);
-    
-    const compl = await getTextCompletion({
-        iamToken: iamRepository.value,
-        folderId: process.env.FOLDER_ID,
-        model: 'yandexgpt/latest',
-        role: 'Ты фронтендер, который работает в Яндекс, любишь пить кофе и читать комиксы, тебя зовут Вася, добавляй йо-хо-хо в случайные места своих ответов',
-        messages: [
-            {
-                role: 'user',
-                text: 'Напиши сортировку пузырьком плес'
-            },
-            {
-                role: 'assistant',
-                text: `**Йо-хо-хо!**
 
-                Алгоритм:
-                1. Сравниваем два первых элемента массива.
-                2. Если первый элемент больше второго, то меняем их местами.
-                3. Сравниваем второй и третий элементы.
-                4. Повторяем шаг 3, пока не дойдём до предпоследнего элемента.
-                5. Повторяем шаги 1–4, начиная со второго элемента.
-                6. Повторяем шаги 1–5, начиная с третьего элемента.
-                7. Продолжаем, пока массив не будет полностью отсортирован.
-               `
-            },
-            {
-                role: 'user',
-                text: 'Напиши конкретный код, ты же фронтендер'
-            },
-        ]
-    });
-    console.log('>>', compl.result.alternatives[0].message.text);
+    await bot.telegram.setMyCommands([
+        {
+            command: '/start',
+            description: 'Сброс контекста',   
+        },
+        {
+            command: '/reset',
+            description: 'Сброс контекста',   
+        },
+        {
+            command: '/role',
+            description: 'Задать промпт для роли'
+        }
+    ]);
+
+    bot.on('message', (ctx) => middleware(ctx, async (ctx, replyId) => {
+        switch(ctx.text) {
+            case '/start':
+            case '/reset':
+                contextStore[replyId] = getDefaultState();
+                return ctx.reply('Контекст был сброшен');
+            case '/role':
+                contextStore[replyId].isWaitingFor = 'role';
+                return ctx.reply('Напишите, какую роль должен выполнять ассистент');
+            default:
+                const isWaitingForRole = contextStore[replyId]?.isWaitingFor === 'role';
+                
+                if (isWaitingForRole) {
+                    contextStore[replyId].isWaitingFor = null;
+                    contextStore[replyId].role = ctx.text;
+                    return ctx.reply(`Создан ассистент с ролью: ${ctx.text}`);
+                }
+
+                if (!contextStore[replyId] || !contextStore[replyId].role) {
+                    return ctx.reply('Нет контекста или роли асситента для пользователя с ID: ' + replyId);
+                }
+
+                const { result: { alternatives }  } = await getTextCompletion({
+                    iamToken: iamRepository.value,
+                    folderId: process.env.FOLDER_ID,
+                    model: 'yandexgpt/latest',
+                    role: contextStore[replyId].role,
+                    messages: [
+                        ...contextStore[replyId].messages,
+                        {
+                            role: 'user',
+                            text: ctx.text
+                        }
+                    ]
+                });
+
+                contextStore[replyId].messages.push({
+                    role: 'user',
+                    text: ctx.text
+                });
+
+                contextStore[replyId].messages.push({
+                    role: 'assistant',
+                    text: alternatives[0].message.text
+                });
+
+                ctx.reply(cleanSpecialSymbols(alternatives[0].message.text), { parse_mode: 'MarkdownV2' });
+        }
+    }));
+
+    await bot.launch();
 }
-
+                    
 main();
+
+// Enable graceful stop
+process.once('SIGINT', () => {
+    iamRepository.destroy();
+    bot.stop('SIGINT');
+})
+process.once('SIGTERM', () => {
+    iamRepository.destroy();
+    bot.stop('SIGTERM');
+})
