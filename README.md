@@ -4,7 +4,9 @@
 
 > You should have installed NodeJS >= 20v, because of using native node fetch
 
-1. Create .env file in project root folder with necessary env vars values:
+0. Clone the repository `git clone https://github.com/theStrangeAdventurer/yandex-gpt-nodejs.git ./path/to/your/folder`
+
+1. Create .env file in project root folder with the necessary env vars values:
 
 ```sh
 YA_OAUTH_TOKEN=<ya-passport-token > # Details -> https://yandex.cloud/en/docs/iam/operations/iam-token/create

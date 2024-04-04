@@ -1,13 +1,25 @@
 {
-  "name": "yagpt",
+  "name": "yagpt-tg-bot-starter",
   "version": "1.0.0",
-  "description": "",
+  "description": "Yandex GPT API telegram bot starter",
   "main": "index.js",
   "type": "module",
+  "homepage": "https://github.com/theStrangeAdventurer/yandex-gpt-nodejs/blob/main/README.md",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/theStrangeAdventurer/yandex-gpt-nodejs"
+  },
+  "keywords": [
+    "yandexGPT",
+    "yandexGptAPI",
+    "telegramBot",
+    "node",
+    "nodejs",
+    "nodejsTelegramBot"
+  ],
   "scripts": {
     "start": "node src/index.js"
   },
-  "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
