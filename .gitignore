@@ -1,2 +1,5 @@
 .env
 node_modules
+cert
+!cert/.keep
+.DS_Store

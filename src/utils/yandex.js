@@ -1,3 +1,6 @@
+import FormData from 'form-data';
+import axios from 'axios';
+
 /**
  * Models: https://yandex.cloud/ru/docs/yandexgpt/concepts/models#yandexgpt-generation
  * 
@@ -35,5 +38,61 @@ export const getTextCompletion = async (options = {}) => {
     });
     const result = await response.json();
 
+    if (result.error) {
+        throw new Error('getTextCompletion error: ' + result.error);
+    }
+
     return result;
+}
+
+/**
+ * Распознавание речи через Yandex Speech Kit
+ * https://cloud.yandex.ru/docs/speechkit/quickstart
+ * @param {ArrayBuffer} buffer голосовое сообщение в виде ArrayBuffer
+ * @param {string} token
+ * @param {'ru' | 'en'} lang 
+ * @returns {string}
+ */
+export const recognizeVoice = async (buffer, token, lang = 'ru-RU') => {
+    const response = await fetch(`https://stt.api.cloud.yandex.net/speech/v1/stt:recognize?folderId=${process.env.FOLDER_ID}&lang=${lang}`, {
+        method: 'post',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/octet-stream'
+        },
+        body: buffer
+      });
+    const data = await response.json();
+    if (data?.error_code) {
+        console.log('\nreceived error, ignore...', { data });
+        // throw new Error(data?.error_message || data?.error_code);
+    }
+    return data?.result || '';
+};
+
+export const vocalizeText = async (text, token, lang = 'ru-RU') => {
+    const formData = new FormData();
+    // https://cloud.yandex.com/en/docs/speechkit/tts/voices
+    
+    let voice = 'ermil';
+    let emotion = 'good';
+
+    formData.append('emotion', emotion);
+    formData.append('text', text);
+    formData.append('lang', lang);
+    formData.append('voice', voice);
+    formData.append('format', 'mp3');
+    formData.append('folderId', process.env.FOLDER_ID);
+   
+    const headers = {
+        Authorization: `Bearer ${token}`,
+        ...formData.getHeaders(),
+    };
+
+    const response = await axios.post('https://tts.api.cloud.yandex.net/speech/v1/tts:synthesize', formData, {
+        headers,
+        responseType: 'arraybuffer'
+    });
+
+    return response.data; 
 }

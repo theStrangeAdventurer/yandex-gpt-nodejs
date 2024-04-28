@@ -15,15 +15,33 @@
     "telegramBot",
     "node",
     "nodejs",
-    "nodejsTelegramBot"
+    "nodejsTelegramBot",
+    "telegramWebApp",
+    "voiceGPTAssistant"
   ],
+  "engines": {
+    "node": ">=20.11"
+  },
   "scripts": {
-    "start": "node src/index.js"
+    "webapp:deploy": "cd react-app && npm run build && cd .. && aws s3 cp --endpoint-url=https://storage.yandexcloud.net  --recursive ./react-app/dist s3://$S3_BUCKET/",
+    "bot:dev": "NODE_ENV=development node --watch src/index.js",
+    "bot:start": "NODE_ENV=production node src/index.js",
+    "webapp:dev": "cd react-app && npm run dev"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@fastify/websocket": "^10.0.1",
+    "axios": "^1.6.8",
+    "form-data": "^4.0.0",
     "dotenv": "^16.4.5",
-    "telegraf": "^4.16.3"
+    "fastify": "^4.26.2",
+    "fastify-https-redirect": "^1.0.4",
+    "fluent-ffmpeg": "^2.1.2",
+    "telegraf": "^4.16.3",
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "vite-plugin-mkcert": "^1.17.5"
   }
 }
